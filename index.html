@@ -1,134 +1,168 @@
-<!DOCTYPE html>
-<html lang="pt-br">
+<!doctype html>
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Organograma Corporativo</title>
-    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-    
-    <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
-        h2 { text-align: center; color: #1a365d; margin-bottom: 30px; }
-        
-        #controls { 
-            display: flex; justify-content: center; align-items: center; gap: 15px; 
-            margin-bottom: 30px; background: white; padding: 20px; border-radius: 12px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-        }
-        
-        select { padding: 10px 15px; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 14px; outline: none; min-width: 200px; }
-
-        .google-visualization-orgchart-node {
-            border: none !important; background: transparent !important; box-shadow: none !important;
-        }
-
-        .node-card {
-            border-top: 5px solid #3182ce; border-radius: 8px; padding: 12px;
-            min-width: 180px; background-color: white;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s;
-        }
-        
-        .node-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
-        .node-name { font-weight: bold; font-size: 14px; color: #2d3748; margin-bottom: 4px; text-transform: uppercase; }
-        .node-role { font-size: 12px; color: #718096; margin-bottom: 6px; }
-        .node-area { font-size: 10px; font-weight: bold; background: #ebf8ff; color: #2b6cb0; padding: 2px 8px; border-radius: 20px; display: inline-block; }
-
-        #chart_div { width: 100%; min-height: 80vh; display: flex; justify-content: center; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Organograma / Cronograma</title>
+  <style>
+    :root{
+      --bg:#0f1720; --card:#111827; --muted:#9ca3af; --accent:#3b82f6;
+      color-scheme: dark;
+    }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+      background:var(--bg); color:#e6eef6; margin:0; padding:24px;}
+    h1{margin:0 0 18px 0; font-size:20px;}
+    .controls{margin-bottom:18px; display:flex;gap:8px;flex-wrap:wrap;}
+    input[type="text"]{padding:8px 10px;border-radius:8px;border:1px solid #222;background:#0b1220;color:#fff;}
+    button{padding:8px 12px;border-radius:8px;border:0;background:var(--accent);color:#fff;cursor:pointer;}
+    .areas{display:flex;flex-wrap:wrap;gap:16px;}
+    .area{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent); padding:12px; border-radius:10px; width:320px; box-shadow:0 6px 18px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.02);}
+    .area h2{margin:0 0 8px 0; font-size:16px;}
+    .card{background:var(--card); padding:10px; border-radius:8px; margin-bottom:8px; display:flex;justify-content:space-between;align-items:center; gap:10px; border:1px solid rgba(255,255,255,0.02);}
+    .meta{font-size:13px;color:var(--muted);}
+    .role{font-weight:600; font-size:14px;}
+    .shift{background:rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px; font-size:12px;}
+    .empty{color:var(--muted); font-style:italic;}
+    @media (max-width:760px){ .areas{flex-direction:column;} .area{width:100%} }
+  </style>
 </head>
 <body>
+  <h1>Organograma / Cronograma (dados da planilha)</h1>
+  <div class="controls">
+    <input id="sheetUrl" type="text" style="min-width:360px"
+      value="https://docs.google.com/spreadsheets/d/1ZFBj0NqycrvqHKWbDbiiFOAVA6Qlg5AiD0_10R-fL64/edit?gid=0" />
+    <button id="loadBtn">Carregar planilha</button>
+    <button id="reloadBtn">Recarregar</button>
+  </div>
 
-    <h2>Organograma Institucional</h2>
+  <div id="status" class="meta">Status: pronto</div>
+  <div id="content" style="margin-top:12px"></div>
 
-    <div id="controls">
-        <label><strong>Filtrar Departamento:</strong></label>
-        <select id="filterArea" onchange="drawChart()">
-            <option value="Tudo">Visualizar Todos</option>
-        </select>
-    </div>
+  <script>
+    // Config: colunas (0-index) — A=0, G=6, K=10, N=13
+    const COLS = { colaborador:0, cargo:6, turno:10, area:13 };
 
-    <div id="chart_div"></div>
+    function sheetIdFromUrl(url){
+      const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)(\/|$)/);
+      return m ? m[1] : null;
+    }
 
-    <script>
-        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSEgo7B_rj6vV2lhx6jYP3S3v6q2dBQBpoXKpfeupsgbPGD0jHv-Emm98td1Ch6z1cSCTcjtzX2hEQB/pub?output=csv';
-
-        let globalData = [];
-
-        google.charts.load('current', {packages:["orgchart"]});
-        google.charts.setOnLoadCallback(fetchData);
-
-        function fetchData() {
-            Papa.parse(CSV_URL, {
-                download: true,
-                header: false,
-                skipEmptyLines: true,
-                complete: function(results) {
-                    // Filtra apenas linhas que possuem um nome na coluna B (índice 1)
-                    globalData = results.data.slice(1).filter(row => row[1] && row[1].trim() !== "");
-                    populateFilter(globalData);
-                    drawChart();
-                }
-            });
+    function parseCSV(text){
+      const rows = [];
+      let cur = '';
+      let row = [];
+      let inQuote = false;
+      for (let i=0;i<text.length;i++){
+        const ch = text[i];
+        const next = text[i+1];
+        if (ch === '"' ){
+          if (inQuote && next === '"'){ cur += '"'; i++; continue; }
+          inQuote = !inQuote;
+          continue;
         }
-
-        function populateFilter(data) {
-            const select = document.getElementById('filterArea');
-            // Remove duplicados, limpa espaços e ordena as áreas (Coluna N - Índice 13)
-            const areas = [...new Set(data.map(row => row[13] ? row[13].toString().trim() : 'Geral'))].filter(Boolean).sort(); 
-            
-            areas.forEach(area => {
-                let opt = document.createElement('option');
-                opt.value = area;
-                opt.innerHTML = area;
-                select.appendChild(opt);
-            });
+        if (ch === ',' && !inQuote){ row.push(cur); cur=''; continue; }
+        if ((ch === '\n' || ch === '\r') && !inQuote){
+          if (ch === '\r' && text[i+1] === '\n'){ /* windows newline */ }
+          row.push(cur); cur='';
+          if (row.length === 1 && row[0] === ''){ row = []; continue; }
+          rows.push(row);
+          row = [];
+          if (ch === '\r' && text[i+1] === '\n') i++;
+          continue;
         }
+        cur += ch;
+      }
+      if (cur !== '' || row.length>0){ row.push(cur); rows.push(row); }
+      return rows;
+    }
 
-        function drawChart() {
-            const selectedArea = document.getElementById('filterArea').value;
-            const dataTable = new google.visualization.DataTable();
-            
-            dataTable.addColumn('string', 'Entity');
-            dataTable.addColumn('string', 'Parent');
-            dataTable.addColumn('string', 'ToolTip');
+    function groupByArea(rows){
+      const groups = {};
+      for(let i=1;i<rows.length;i++){
+        const r = rows[i];
+        if (!r || r.length===0) continue;
+        const nome = (r[COLS.colaborador]||'').trim();
+        const cargo = (r[COLS.cargo]||'').trim();
+        const area = (r[COLS.area]||'Sem área').trim();
+        const turno = (r[COLS.turno]||'').trim();
+        if (!nome) continue;
+        if (!groups[area]) groups[area]=[];
+        groups[area].push({nome,cargo,turno});
+      }
+      return groups;
+    }
 
-            const rows = [];
-            globalData.forEach(row => {
-                // Limpeza rigorosa de strings para evitar erros de validação/espaços
-                const nome = row[1].toString().trim();           // Coluna B
-                let gestor = row[17] ? row[17].toString().trim() : ''; // Coluna R
-                const cargo = (row[6] || row[10] || 'Colaborador').toString().trim(); // Coluna G ou K
-                const area = (row[13] || 'Geral').toString().trim(); // Coluna N
+    function render(groups){
+      const content = document.getElementById('content');
+      content.innerHTML = '';
+      const container = document.createElement('div');
+      container.className = 'areas';
+      const areas = Object.keys(groups).sort();
+      if (areas.length===0){
+        content.innerHTML = '<div class="empty">Nenhum dado encontrado — verifique se a planilha está pública e se as colunas existem.</div>';
+        return;
+      }
+      areas.forEach(area=>{
+        const box = document.createElement('div');
+        box.className='area';
+        const title = document.createElement('h2');
+        title.textContent = area;
+        box.appendChild(title);
+        groups[area].forEach(p=>{
+          const card = document.createElement('div');
+          card.className='card';
+          const left = document.createElement('div');
+          left.innerHTML = `<div class="role">${escapeHtml(p.nome)}</div><div class="meta">${escapeHtml(p.cargo)}</div>`;
+          const right = document.createElement('div');
+          right.innerHTML = `<div class="shift">${escapeHtml(p.turno||'—')}</div>`;
+          card.appendChild(left); card.appendChild(right);
+          box.appendChild(card);
+        });
+        container.appendChild(box);
+      });
+      content.appendChild(container);
+    }
 
-                // REFORÇO DE HIERARQUIA: Eduardo sempre é o topo
-                if (nome.toUpperCase().includes("TAKATA")) {
-                    gestor = '';
-                }
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
-                // Lógica de Filtro
-                if (selectedArea !== "Tudo" && area !== selectedArea) return;
-
-                const cardHtml = `
-                    <div class="node-card">
-                        <div class="node-name">${nome}</div>
-                        <div class="node-role">${cargo}</div>
-                        <div class="node-area">${area}</div>
-                    </div>
-                `;
-
-                rows.push([{ 'v': nome, 'f': cardHtml }, gestor, cargo]);
-            });
-
-            if (rows.length === 0) {
-                document.getElementById('chart_div').innerHTML = "<p>Nenhum dado encontrado para esta área. Verifique a planilha.</p>";
-                return;
-            }
-
-            dataTable.addRows(rows);
-            const chart = new google.visualization.OrgChart(document.getElementById('chart_div'));
-            chart.draw(dataTable, { allowHtml: true, size: 'medium', allowCollapse: true });
+    async function loadFromSheetUrl(url){
+      const status = document.getElementById('status');
+      const id = sheetIdFromUrl(url);
+      if (!id){ status.textContent = 'URL inválida. Cole a URL completa da planilha.'; return; }
+      const gidMatch = url.match(/[?&]gid=(\d+)/);
+      const gid = gidMatch ? gidMatch[1] : '0';
+      const csvUrl = `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+      status.textContent = 'Carregando dados...';
+      try{
+        const res = await fetch(csvUrl);
+        if (!res.ok){
+          status.textContent = `Falha ao acessar (HTTP ${res.status}). Verifique permissões da planilha.`;
+          return;
         }
-    </script>
+        const text = await res.text();
+        const rows = parseCSV(text);
+        const groups = groupByArea(rows);
+        render(groups);
+        status.textContent = 'Dados carregados com sucesso.';
+      }catch(err){
+        console.error(err);
+        status.textContent = 'Erro ao buscar planilha — veja o console.';
+      }
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', ()=>{
+      const url = document.getElementById('sheetUrl').value.trim();
+      loadFromSheetUrl(url);
+    });
+    document.getElementById('reloadBtn').addEventListener('click', ()=>{
+      const url = document.getElementById('sheetUrl').value.trim();
+      loadFromSheetUrl(url);
+    });
+
+    window.addEventListener('load', ()=>{
+      const url = document.getElementById('sheetUrl').value.trim();
+      loadFromSheetUrl(url);
+    });
+  </script>
 </body>
 </html>
