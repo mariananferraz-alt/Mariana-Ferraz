@@ -26,22 +26,22 @@
         }
 
         .node-card {
-            border: 1px solid #ddd;
+            border: 2px solid #3498db;
             border-radius: 8px;
             padding: 10px;
-            min-width: 160px;
+            min-width: 180px;
             background-color: white;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             transition: transform 0.2s;
         }
         
         .node-card:hover { transform: scale(1.05); }
-        .node-name { font-weight: bold; font-size: 14px; color: #333; margin-bottom: 4px; }
-        .node-role { font-size: 12px; color: #666; }
-        .node-area { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-top: 5px; color: #3498db; }
-        .node-scale { font-size: 10px; color: #999; margin-top: 2px; }
+        .node-name { font-weight: bold; font-size: 14px; color: #2c3e50; margin-bottom: 4px; text-transform: uppercase; }
+        .node-role { font-size: 12px; color: #7f8c8d; font-style: italic; }
+        .node-area { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-top: 5px; color: #e67e22; }
+        .node-scale { font-size: 10px; color: #95a5a6; margin-top: 2px; }
 
-        #chart_div { width: 100%; height: 80vh; overflow: auto; display: flex; justify-content: center; }
+        #chart_div { width: 100%; height: 85vh; overflow: auto; display: flex; justify-content: center; padding-top: 20px; }
     </style>
 </head>
 <body>
@@ -58,9 +58,8 @@
     <div id="chart_div"></div>
 
     <script>
-        // Configurações do Google Sheets
-        const SHEET_ID = '1ROLJAa--QQKnRs6u_anv9nkwV9APMEcGrxb4aHX-Xiw';
-        const CSV_URL = `https://docs.google.com/spreadsheets/d/e/2PACX-1vSEgo7B_rj6vV2lhx6jYP3S3v6q2dBQBpoXKpfeupsgbPGD0jHv-Emm98td1Ch6z1cSCTcjtzX2hEQB/pub?output=csv`;
+        // Link direto da sua planilha publicada como CSV
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSEgo7B_rj6vV2lhx6jYP3S3v6q2dBQBpoXKpfeupsgbPGD0jHv-Emm98td1Ch6z1cSCTjtzX2hEQB/pub?output=csv';
 
         let globalData = [];
 
@@ -70,9 +69,10 @@
         async function fetchData() {
             Papa.parse(CSV_URL, {
                 download: true,
-                header: false, // Usando índices conforme seu prompt
+                header: false,
+                skipEmptyLines: true,
                 complete: function(results) {
-                    globalData = results.data.slice(1); // Remove cabeçalho
+                    globalData = results.data.slice(1); // Remove a linha de cabeçalho
                     populateFilter(globalData);
                     drawChart();
                 }
@@ -81,7 +81,8 @@
 
         function populateFilter(data) {
             const select = document.getElementById('filterArea');
-            const areas = [...new Set(data.map(row => row[13]))].filter(Boolean); // Coluna N (Índice 13)
+            // Pega áreas únicas da Coluna N (índice 13)
+            const areas = [...new Set(data.map(row => row[13]))].filter(Boolean).sort(); 
             areas.forEach(area => {
                 let opt = document.createElement('option');
                 opt.value = area;
@@ -100,29 +101,35 @@
 
             const rows = [];
             globalData.forEach(row => {
-                const nome = row[1];       // Coluna B
-                const gestor = row[17];    // Coluna R
-                const cargo = row[6] || row[10]; // Coluna G ou K
-                const area = row[13];      // Coluna N
-                const escala = `${row[8] || ''} ${row[9] || ''}`; // Coluna I e J
+                const nome = row[1] ? row[1].trim() : '';       // Coluna B
+                let gestor = row[17] ? row[17].trim() : '';    // Coluna R
+                const cargo = row[6] || row[10] || 'Não Informado'; // Coluna G ou K
+                const area = row[13] || 'Geral';      // Coluna N
+                const escala = `${row[8] || ''} ${row[9] || ''}`; // Colunas I e J
 
-                // Lógica de Filtro
+                // REFORÇO PARA O LÍDER: Se for o Takata, ele não tem gestor (fica no topo)
+                if (nome.toUpperCase().includes("TAKATA")) {
+                    gestor = '';
+                }
+
+                // Lógica de Filtro por Área
                 if (selectedArea !== "Tudo" && area !== selectedArea) return;
 
-                // Construção do Card em HTML
-                const cardHtml = `
-                    <div class="node-card">
-                        <div class="node-name">${nome}</div>
-                        <div class="node-role">${cargo}</div>
-                        <div class="node-area">${area}</div>
-                        <div class="node-scale">Escala: ${escala}</div>
-                    </div>
-                `;
+                if (nome !== "") {
+                    const cardHtml = `
+                        <div class="node-card">
+                            <div class="node-name">${nome}</div>
+                            <div class="node-role">${cargo}</div>
+                            <div class="node-area">${area}</div>
+                            <div class="node-scale">Escala: ${escala}</div>
+                        </div>
+                    `;
 
-                rows.push([{
-                    'v': nome, 
-                    'f': cardHtml
-                }, gestor, cargo]);
+                    rows.push([{
+                        'v': nome, 
+                        'f': cardHtml
+                    }, gestor, cargo]);
+                }
             });
 
             dataTable.addRows(rows);
