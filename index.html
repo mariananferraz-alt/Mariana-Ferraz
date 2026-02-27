@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organograma Automatizado - Real Time</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        h2 { text-align: center; color: #2c3e50; }
+        
+        #controls { 
+            display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; 
+            background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; outline: none; }
+
+        /* Estilização dos Cards do Organograma */
+        .google-visualization-orgchart-node {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+
+        .node-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            min-width: 160px;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .node-card:hover { transform: scale(1.05); }
+        .node-name { font-weight: bold; font-size: 14px; color: #333; margin-bottom: 4px; }
+        .node-role { font-size: 12px; color: #666; }
+        .node-area { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-top: 5px; color: #3498db; }
+        .node-scale { font-size: 10px; color: #999; margin-top: 2px; }
+
+        #chart_div { width: 100%; height: 80vh; overflow: auto; display: flex; justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <h2>Organograma Institucional</h2>
+
+    <div id="controls">
+        <label for="filterArea">Filtrar por Área:</label>
+        <select id="filterArea" onchange="drawChart()">
+            <option value="Tudo">Todas as Áreas</option>
+        </select>
+    </div>
+
+    <div id="chart_div"></div>
+
+    <script>
+        // Configurações do Google Sheets
+        const SHEET_ID = '1ROLJAa--QQKnRs6u_anv9nkwV9APMEcGrxb4aHX-Xiw';
+        const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
+
+        let globalData = [];
+
+        google.charts.load('current', {packages:["orgchart"]});
+        google.charts.setOnLoadCallback(fetchData);
+
+        async function fetchData() {
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: false, // Usando índices conforme seu prompt
+                complete: function(results) {
+                    globalData = results.data.slice(1); // Remove cabeçalho
+                    populateFilter(globalData);
+                    drawChart();
+                }
+            });
+        }
+
+        function populateFilter(data) {
+            const select = document.getElementById('filterArea');
+            const areas = [...new Set(data.map(row => row[13]))].filter(Boolean); // Coluna N (Índice 13)
+            areas.forEach(area => {
+                let opt = document.createElement('option');
+                opt.value = area;
+                opt.innerHTML = area;
+                select.appendChild(opt);
+            });
+        }
+
+        function drawChart() {
+            const selectedArea = document.getElementById('filterArea').value;
+            const dataTable = new google.visualization.DataTable();
+            
+            dataTable.addColumn('string', 'Entity');
+            dataTable.addColumn('string', 'Parent');
+            dataTable.addColumn('string', 'ToolTip');
+
+            const rows = [];
+            globalData.forEach(row => {
+                const nome = row[1];       // Coluna B
+                const gestor = row[17];    // Coluna R
+                const cargo = row[6] || row[10]; // Coluna G ou K
+                const area = row[13];      // Coluna N
+                const escala = `${row[8] || ''} ${row[9] || ''}`; // Coluna I e J
+
+                // Lógica de Filtro
+                if (selectedArea !== "Tudo" && area !== selectedArea) return;
+
+                // Construção do Card em HTML
+                const cardHtml = `
+                    <div class="node-card">
+                        <div class="node-name">${nome}</div>
+                        <div class="node-role">${cargo}</div>
+                        <div class="node-area">${area}</div>
+                        <div class="node-scale">Escala: ${escala}</div>
+                    </div>
+                `;
+
+                rows.push([{
+                    'v': nome, 
+                    'f': cardHtml
+                }, gestor, cargo]);
+            });
+
+            dataTable.addRows(rows);
+            const chart = new google.visualization.OrgChart(document.getElementById('chart_div'));
+            chart.draw(dataTable, {
+                allowHtml: true,
+                size: 'medium',
+                allowCollapse: true
+            });
+        }
+    </script>
+</body>
+</html>
